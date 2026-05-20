@@ -126,8 +126,14 @@ func (ps *ProxyServer) executeRequestWithRetry(
 ) {
 	cfg := group.EffectiveConfig
 
-	apiKey, err := ps.keyProvider.SelectKey(group.ID)
+	apiKey, err := ps.keyProvider.SelectKey(group)
 	if err != nil {
+		var cooldownErr *keypool.CooldownError
+		if errors.As(err, &cooldownErr) {
+			response.Error(c, app_errors.NewAPIError(app_errors.ErrKeyCooldown, cooldownErr.Error()))
+			ps.logRequest(c, originalGroup, group, nil, startTime, http.StatusServiceUnavailable, err, isStream, "", channelHandler, bodyBytes, models.RequestTypeFinal)
+			return
+		}
 		logrus.Errorf("Failed to select a key for group %s on attempt %d: %v", group.Name, retryCount+1, err)
 		response.Error(c, app_errors.NewAPIError(app_errors.ErrNoKeysAvailable, err.Error()))
 		ps.logRequest(c, originalGroup, group, nil, startTime, http.StatusServiceUnavailable, err, isStream, "", channelHandler, bodyBytes, models.RequestTypeFinal)
@@ -238,7 +244,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		ps.keyProvider.UpdateStatus(apiKey, group, false, parsedError)
 
 		// 判断是否为最后一次尝试
-		isLastAttempt := retryCount >= cfg.MaxRetries
+		isLastAttempt := group.EffectiveConfig.EnableStickyKey || retryCount >= cfg.MaxRetries
 		requestType := models.RequestTypeRetry
 		if isLastAttempt {
 			requestType = models.RequestTypeFinal
@@ -248,6 +254,12 @@ func (ps *ProxyServer) executeRequestWithRetry(
 
 		// 如果是最后一次尝试，直接返回错误，不再递归
 		if isLastAttempt {
+			if group.EffectiveConfig.EnableStickyKey {
+				if remaining, ok := ps.keyProvider.StickyCooldownRemaining(group.ID); ok {
+					response.Error(c, app_errors.NewAPIError(app_errors.ErrKeyCooldown, fmt.Sprintf("冷却时间中，请%d秒后再试", remaining)))
+					return
+				}
+			}
 			var errorJSON map[string]any
 			if err := json.Unmarshal([]byte(errorMessage), &errorJSON); err == nil {
 				c.JSON(statusCode, errorJSON)
@@ -261,7 +273,9 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		return
 	}
 
-	// ps.keyProvider.UpdateStatus(apiKey, group, true) // 请求成功不再重置成功次数，减少IO消耗
+	if group.EffectiveConfig.EnableStickyKey {
+		ps.keyProvider.UpdateStatus(apiKey, group, true, "")
+	}
 	logrus.Debugf("Request for group %s succeeded on attempt %d with key %s", group.Name, retryCount+1, utils.MaskAPIKey(apiKey.KeyValue))
 
 	// Check if this is a model list request (needs special handling)

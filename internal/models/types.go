@@ -35,6 +35,9 @@ type GroupConfig struct {
 	ProxyURL                     *string `json:"proxy_url,omitempty"`
 	MaxRetries                   *int    `json:"max_retries,omitempty"`
 	BlacklistThreshold           *int    `json:"blacklist_threshold,omitempty"`
+	EnableStickyKey              *bool   `json:"enable_sticky_key,omitempty"`
+	StickyKeyFailureThreshold    *int    `json:"sticky_key_failure_threshold,omitempty"`
+	StickyKeyCooldownSeconds     *int    `json:"sticky_key_cooldown_seconds,omitempty"`
 	FailoverStatusCodes          *string `json:"failover_status_codes,omitempty"`
 	KeyValidationIntervalMinutes *int    `json:"key_validation_interval_minutes,omitempty"`
 	KeyValidationConcurrency     *int    `json:"key_validation_concurrency,omitempty"`

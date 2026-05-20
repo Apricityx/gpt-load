@@ -1,0 +1,60 @@
+name: Build Docker Image Tar
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version string embedded in the binary
+        required: false
+        default: manual
+  push:
+    branches:
+      - main
+
+jobs:
+  build-image-tar:
+    name: Build image tar (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            artifact: gpt-load-linux-amd64-image
+            tar: gpt-load-linux-amd64.tar
+          - platform: linux/arm64
+            artifact: gpt-load-linux-arm64-image
+            tar: gpt-load-linux-arm64.tar
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image tar
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          outputs: type=docker,dest=${{ matrix.tar }}
+          tags: gpt-load:${{ github.event.inputs.version || github.sha }}
+          build-args: |
+            VERSION=${{ github.event.inputs.version || github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload image tar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.tar }}
+          retention-days: 7

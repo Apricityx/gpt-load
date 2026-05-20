@@ -17,6 +17,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// CooldownError indicates sticky-key mode is rejecting requests temporarily.
+type CooldownError struct {
+	RemainingSeconds int
+}
+
+func (e *CooldownError) Error() string {
+	return fmt.Sprintf("冷却时间中，请%d秒后再试", e.RemainingSeconds)
+}
+
 type KeyProvider struct {
 	db              *gorm.DB
 	store           store.Store
@@ -34,8 +43,16 @@ func NewProvider(db *gorm.DB, store store.Store, settingsManager *config.SystemS
 	}
 }
 
-// SelectKey 为指定的分组原子性地选择并轮换一个可用的 APIKey。
-func (p *KeyProvider) SelectKey(groupID uint) (*models.APIKey, error) {
+// SelectKey selects an available API key for the given group.
+func (p *KeyProvider) SelectKey(group *models.Group) (*models.APIKey, error) {
+	if group.EffectiveConfig.EnableStickyKey {
+		return p.selectStickyKey(group)
+	}
+	return p.selectRotatingKey(group.ID)
+}
+
+// selectRotatingKey 为指定的分组原子性地选择并轮换一个可用的 APIKey。
+func (p *KeyProvider) selectRotatingKey(groupID uint) (*models.APIKey, error) {
 	activeKeysListKey := fmt.Sprintf("group:%d:active_keys", groupID)
 
 	// 1. Atomically rotate the key ID from the list
@@ -87,29 +104,184 @@ func (p *KeyProvider) SelectKey(groupID uint) (*models.APIKey, error) {
 	return apiKey, nil
 }
 
+func (p *KeyProvider) selectStickyKey(group *models.Group) (*models.APIKey, error) {
+	if remaining, ok := p.getStickyCooldownRemaining(group.ID); ok {
+		return nil, &CooldownError{RemainingSeconds: remaining}
+	}
+
+	if err := p.finalizeExpiredStickyCooldown(group); err != nil {
+		return nil, err
+	}
+
+	currentKeyID, err := p.getStoredKeyID(p.stickyCurrentKey(group.ID))
+	if err == nil {
+		apiKey, err := p.getKeyByID(currentKeyID, group.ID)
+		if err == nil {
+			return apiKey, nil
+		}
+		if !errors.Is(err, app_errors.ErrNoActiveKeys) {
+			return nil, err
+		}
+		if err := p.store.Delete(p.stickyCurrentKey(group.ID)); err != nil {
+			return nil, err
+		}
+		return p.selectRandomStickyKey(group.ID)
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+
+	return p.selectRandomStickyKey(group.ID)
+}
+
+func (p *KeyProvider) getStickyCooldownRemaining(groupID uint) (int, bool) {
+	data, err := p.store.Get(p.stickyCooldownKey(groupID))
+	if err != nil {
+		return 0, false
+	}
+	untilUnix, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
+		return 1, true
+	}
+	remaining := int(time.Until(time.Unix(untilUnix, 0)).Seconds())
+	if remaining < 1 {
+		remaining = 1
+	}
+	return remaining, true
+}
+
+func (p *KeyProvider) StickyCooldownRemaining(groupID uint) (int, bool) {
+	return p.getStickyCooldownRemaining(groupID)
+}
+
+func (p *KeyProvider) finalizeExpiredStickyCooldown(group *models.Group) error {
+	keyID, err := p.getStoredKeyID(p.stickyPendingBlacklistKey(group.ID))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	if err := p.disableKey(group.ID, keyID); err != nil {
+		return err
+	}
+	if err := p.store.Delete(p.stickyPendingBlacklistKey(group.ID)); err != nil {
+		return err
+	}
+	if err := p.store.Delete(p.stickyCurrentKey(group.ID)); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *KeyProvider) selectRandomStickyKey(groupID uint) (*models.APIKey, error) {
+	activeKeysListKey := fmt.Sprintf("group:%d:active_keys", groupID)
+	length, err := p.store.LLen(activeKeysListKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active key count: %w", err)
+	}
+	if length <= 0 {
+		return nil, app_errors.ErrNoActiveKeys
+	}
+
+	rotations := rand.Int63n(length) + 1
+	var keyIDStr string
+	for range rotations {
+		keyIDStr, err = p.store.Rotate(activeKeysListKey)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, app_errors.ErrNoActiveKeys
+			}
+			return nil, fmt.Errorf("failed to rotate key from store: %w", err)
+		}
+	}
+
+	keyID, err := strconv.ParseUint(keyIDStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse key ID '%s': %w", keyIDStr, err)
+	}
+	if err := p.store.Set(p.stickyCurrentKey(groupID), []byte(keyIDStr), 0); err != nil {
+		return nil, fmt.Errorf("failed to store sticky key: %w", err)
+	}
+	if err := p.handleSuccess(uint(keyID), fmt.Sprintf("key:%d", keyID), activeKeysListKey); err != nil {
+		return nil, err
+	}
+	return p.getKeyByID(uint(keyID), groupID)
+}
+
+func (p *KeyProvider) getStoredKeyID(key string) (uint, error) {
+	data, err := p.store.Get(key)
+	if err != nil {
+		return 0, err
+	}
+	keyID, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse stored key ID '%s': %w", string(data), err)
+	}
+	return uint(keyID), nil
+}
+
+func (p *KeyProvider) getKeyByID(keyID uint, groupID uint) (*models.APIKey, error) {
+	keyHashKey := fmt.Sprintf("key:%d", keyID)
+	keyDetails, err := p.store.HGetAll(keyHashKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get key details for key ID %d: %w", keyID, err)
+	}
+	if keyDetails["status"] != models.KeyStatusActive {
+		return nil, app_errors.ErrNoActiveKeys
+	}
+
+	failureCount, _ := strconv.ParseInt(keyDetails["failure_count"], 10, 64)
+	createdAt, _ := strconv.ParseInt(keyDetails["created_at"], 10, 64)
+	encryptedKeyValue := keyDetails["key_string"]
+	decryptedKeyValue, err := p.encryptionSvc.Decrypt(encryptedKeyValue)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"keyID": keyID, "error": err}).Debug("Failed to decrypt key value, using as-is for backward compatibility")
+		decryptedKeyValue = encryptedKeyValue
+	}
+
+	return &models.APIKey{
+		ID:           keyID,
+		KeyValue:     decryptedKeyValue,
+		Status:       keyDetails["status"],
+		FailureCount: failureCount,
+		GroupID:      groupID,
+		CreatedAt:    time.Unix(createdAt, 0),
+	}, nil
+}
+
 // UpdateStatus 异步地提交一个 Key 状态更新任务。
 func (p *KeyProvider) UpdateStatus(apiKey *models.APIKey, group *models.Group, isSuccess bool, errorMessage string) {
-	go func() {
-		keyHashKey := fmt.Sprintf("key:%d", apiKey.ID)
-		activeKeysListKey := fmt.Sprintf("group:%d:active_keys", group.ID)
+	if group.EffectiveConfig.EnableStickyKey {
+		if err := p.updateStatus(apiKey, group, isSuccess, errorMessage); err != nil {
+			logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to update sticky key status")
+		}
+		return
+	}
 
-		if isSuccess {
-			if err := p.handleSuccess(apiKey.ID, keyHashKey, activeKeysListKey); err != nil {
-				logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to handle key success")
-			}
-		} else {
-			if app_errors.IsUnCounted(errorMessage) {
-				logrus.WithFields(logrus.Fields{
-					"keyID": apiKey.ID,
-					"error": errorMessage,
-				}).Debug("Uncounted error, skipping failure handling")
-			} else {
-				if err := p.handleFailure(apiKey, group, keyHashKey, activeKeysListKey); err != nil {
-					logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to handle key failure")
-				}
-			}
+	go func() {
+		if err := p.updateStatus(apiKey, group, isSuccess, errorMessage); err != nil {
+			logrus.WithFields(logrus.Fields{"keyID": apiKey.ID, "error": err}).Error("Failed to update key status")
 		}
 	}()
+}
+
+func (p *KeyProvider) updateStatus(apiKey *models.APIKey, group *models.Group, isSuccess bool, errorMessage string) error {
+	keyHashKey := fmt.Sprintf("key:%d", apiKey.ID)
+	activeKeysListKey := fmt.Sprintf("group:%d:active_keys", group.ID)
+
+	if isSuccess {
+		return p.handleSuccess(apiKey.ID, keyHashKey, activeKeysListKey)
+	}
+	if app_errors.IsUnCounted(errorMessage) {
+		logrus.WithFields(logrus.Fields{
+			"keyID": apiKey.ID,
+			"error": errorMessage,
+		}).Debug("Uncounted error, skipping failure handling")
+		return nil
+	}
+	return p.handleFailure(apiKey, group, keyHashKey, activeKeysListKey)
 }
 
 // executeTransactionWithRetry wraps a database transaction with a retry mechanism.
@@ -209,7 +381,8 @@ func (p *KeyProvider) handleFailure(apiKey *models.APIKey, group *models.Group, 
 		newFailureCount := failureCount + 1
 
 		updates := map[string]any{"failure_count": newFailureCount}
-		shouldBlacklist := blacklistThreshold > 0 && newFailureCount >= int64(blacklistThreshold)
+		shouldCooldown := group.EffectiveConfig.EnableStickyKey && newFailureCount >= int64(group.EffectiveConfig.StickyKeyFailureThreshold)
+		shouldBlacklist := !group.EffectiveConfig.EnableStickyKey && blacklistThreshold > 0 && newFailureCount >= int64(blacklistThreshold)
 		if shouldBlacklist {
 			updates["status"] = models.KeyStatusInvalid
 		}
@@ -232,8 +405,54 @@ func (p *KeyProvider) handleFailure(apiKey *models.APIKey, group *models.Group, 
 			}
 		}
 
+		if shouldCooldown {
+			cooldown := time.Duration(group.EffectiveConfig.StickyKeyCooldownSeconds) * time.Second
+			until := time.Now().Add(cooldown).Unix()
+			if err := p.store.Set(p.stickyCooldownKey(group.ID), []byte(strconv.FormatInt(until, 10)), cooldown); err != nil {
+				return fmt.Errorf("failed to set sticky key cooldown: %w", err)
+			}
+			if err := p.store.Set(p.stickyPendingBlacklistKey(group.ID), []byte(strconv.FormatUint(uint64(apiKey.ID), 10)), 0); err != nil {
+				return fmt.Errorf("failed to set sticky pending blacklist key: %w", err)
+			}
+			logrus.WithFields(logrus.Fields{
+				"keyID":            apiKey.ID,
+				"threshold":        group.EffectiveConfig.StickyKeyFailureThreshold,
+				"cooldown_seconds": group.EffectiveConfig.StickyKeyCooldownSeconds,
+			}).Warn("Sticky key reached failure threshold, entering cooldown")
+		}
+
 		return nil
 	})
+}
+
+func (p *KeyProvider) disableKey(groupID uint, keyID uint) error {
+	activeKeysListKey := fmt.Sprintf("group:%d:active_keys", groupID)
+	keyHashKey := fmt.Sprintf("key:%d", keyID)
+
+	return p.executeTransactionWithRetry(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.APIKey{}).Where("id = ?", keyID).Updates(map[string]any{"status": models.KeyStatusInvalid}).Error; err != nil {
+			return fmt.Errorf("failed to disable key %d in DB: %w", keyID, err)
+		}
+		if err := p.store.LRem(activeKeysListKey, 0, keyID); err != nil {
+			return fmt.Errorf("failed to LRem disabled sticky key: %w", err)
+		}
+		if err := p.store.HSet(keyHashKey, map[string]any{"status": models.KeyStatusInvalid}); err != nil {
+			return fmt.Errorf("failed to update disabled sticky key in store: %w", err)
+		}
+		return nil
+	})
+}
+
+func (p *KeyProvider) stickyCurrentKey(groupID uint) string {
+	return fmt.Sprintf("group:%d:sticky_current_key", groupID)
+}
+
+func (p *KeyProvider) stickyCooldownKey(groupID uint) string {
+	return fmt.Sprintf("group:%d:sticky_cooldown", groupID)
+}
+
+func (p *KeyProvider) stickyPendingBlacklistKey(groupID uint) string {
+	return fmt.Sprintf("group:%d:sticky_pending_blacklist", groupID)
 }
 
 // LoadKeysFromDB 从数据库加载所有分组和密钥，并填充到 Store 中。

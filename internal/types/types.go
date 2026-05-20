@@ -37,6 +37,9 @@ type SystemSettings struct {
 	// 密钥配置
 	MaxRetries                   int    `json:"max_retries" default:"3" name:"config.max_retries" category:"config.category.key" desc:"config.max_retries_desc" validate:"required,min=0"`
 	BlacklistThreshold           int    `json:"blacklist_threshold" default:"3" name:"config.blacklist_threshold" category:"config.category.key" desc:"config.blacklist_threshold_desc" validate:"required,min=0"`
+	EnableStickyKey              bool   `json:"enable_sticky_key" default:"false" name:"config.enable_sticky_key" category:"config.category.key" desc:"config.enable_sticky_key_desc"`
+	StickyKeyFailureThreshold    int    `json:"sticky_key_failure_threshold" default:"5" name:"config.sticky_key_failure_threshold" category:"config.category.key" desc:"config.sticky_key_failure_threshold_desc" validate:"required,min=1"`
+	StickyKeyCooldownSeconds     int    `json:"sticky_key_cooldown_seconds" default:"30" name:"config.sticky_key_cooldown_seconds" category:"config.category.key" desc:"config.sticky_key_cooldown_seconds_desc" validate:"required,min=1"`
 	FailoverStatusCodes          string `json:"failover_status_codes" default:"400-403,405-999" name:"config.failover_status_codes" category:"config.category.key" desc:"config.failover_status_codes_desc"`
 	KeyValidationIntervalMinutes int    `json:"key_validation_interval_minutes" default:"60" name:"config.key_validation_interval" category:"config.category.key" desc:"config.key_validation_interval_desc" validate:"required,min=1"`
 	KeyValidationConcurrency     int    `json:"key_validation_concurrency" default:"10" name:"config.key_validation_concurrency" category:"config.category.key" desc:"config.key_validation_concurrency_desc" validate:"required,min=1"`
