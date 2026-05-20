@@ -93,6 +93,7 @@ var MessagesJaJP = map[string]string{
 	"dashboard.invalid_keys":                                     "無効なキー",
 	"dashboard.success_requests":                                 "成功",
 	"dashboard.failed_requests":                                  "失敗",
+	"dashboard.token_usage_million_subtitle":                     "%.2f M Tokens",
 	"dashboard.auth_key_missing":                                 "AUTH_KEYが設定されていません。システムが正常に動作しません",
 	"dashboard.auth_key_required":                                "管理インターフェースを保護するためAUTH_KEYを設定する必要があります",
 	"dashboard.encryption_key_missing":                           "ENCRYPTION_KEYが設定されていません。機密データがプレーンテキストで保存されます",
@@ -108,7 +109,7 @@ var MessagesJaJP = map[string]string{
 
 	// Database related
 	"database.cannot_get_groups":     "グループリストを取得できません",
-	"database.rpm_stats_failed":      "RPM統計の取得に失敗しました",
+	"database.token_stats_failed":    "トークン統計の取得に失敗しました",
 	"database.current_stats_failed":  "現在の期間統計の取得に失敗しました",
 	"database.previous_stats_failed": "前の期間統計の取得に失敗しました",
 	"database.chart_data_failed":     "チャートデータの取得に失敗しました",

@@ -85,7 +85,7 @@ export default {
     activeKeys: "アクティブキー",
     inactiveKeys: "非アクティブキー",
     blacklistedKeys: "ブラックリストキー",
-    rpm10Min: "10分間RPM",
+    tokenUsage24h: "24時間 Tokens",
     requests24h: "24時間リクエスト",
     errorRate24h: "24時間エラー率",
     requestStatistics: "リクエスト統計",

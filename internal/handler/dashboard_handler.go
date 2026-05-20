@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"fmt"
 	"gpt-load/internal/encryption"
 	app_errors "gpt-load/internal/errors"
@@ -21,9 +22,9 @@ func (s *Server) Stats(c *gin.Context) {
 	s.DB.Model(&models.APIKey{}).Where("status = ?", models.KeyStatusInvalid).Count(&invalidKeys)
 
 	now := time.Now()
-	rpmStats, err := s.getRPMStats(now)
+	tokenUsageStats, err := s.getTokenUsageStats(c, now)
 	if err != nil {
-		response.ErrorI18nFromAPIError(c, app_errors.ErrDatabase, "database.rpm_stats_failed")
+		response.ErrorI18nFromAPIError(c, app_errors.ErrDatabase, "database.token_stats_failed")
 		return
 	}
 	twentyFourHoursAgo := now.Add(-24 * time.Hour)
@@ -97,7 +98,7 @@ func (s *Server) Stats(c *gin.Context) {
 			SubValue:    invalidKeys,
 			SubValueTip: i18n.Message(c, "dashboard.invalid_keys"),
 		},
-		RPM: rpmStats,
+		TokenUsage: tokenUsageStats,
 		RequestCount: models.StatCard{
 			Value:         float64(currentPeriod.TotalRequests),
 			Trend:         reqTrend,
@@ -197,42 +198,44 @@ func (s *Server) getHourlyStats(startTime, endTime time.Time) (hourlyStatResult,
 	return result, err
 }
 
-type rpmStatResult struct {
-	CurrentRequests  int64
-	PreviousRequests int64
+type tokenUsageStatResult struct {
+	CurrentTokens  sql.NullInt64
+	PreviousTokens sql.NullInt64
 }
 
-func (s *Server) getRPMStats(now time.Time) (models.StatCard, error) {
-	tenMinutesAgo := now.Add(-10 * time.Minute)
-	twentyMinutesAgo := now.Add(-20 * time.Minute)
+func (s *Server) getTokenUsageStats(c *gin.Context, now time.Time) (models.StatCard, error) {
+	twentyFourHoursAgo := now.Add(-24 * time.Hour)
+	fortyEightHoursAgo := now.Add(-48 * time.Hour)
 
-	var result rpmStatResult
+	var result tokenUsageStatResult
 	err := s.DB.Model(&models.RequestLog{}).
-		Select("count(case when timestamp >= ? then 1 end) as current_requests, count(case when timestamp >= ? and timestamp < ? then 1 end) as previous_requests", tenMinutesAgo, twentyMinutesAgo, tenMinutesAgo).
-		Where("timestamp >= ? AND request_type = ?", twentyMinutesAgo, models.RequestTypeFinal).
+		Select("sum(case when timestamp >= ? then total_tokens else 0 end) as current_tokens, sum(case when timestamp >= ? and timestamp < ? then total_tokens else 0 end) as previous_tokens", twentyFourHoursAgo, fortyEightHoursAgo, twentyFourHoursAgo).
+		Where("timestamp >= ? AND request_type = ?", fortyEightHoursAgo, models.RequestTypeFinal).
 		Scan(&result).Error
 
 	if err != nil {
 		return models.StatCard{}, err
 	}
 
-	currentRPM := float64(result.CurrentRequests) / 10.0
-	previousRPM := float64(result.PreviousRequests) / 10.0
+	currentTokens := result.CurrentTokens.Int64
+	previousTokens := result.PreviousTokens.Int64
+	currentTokensInBillions := float64(currentTokens) / 1_000_000_000.0
 
-	rpmTrend := 0.0
-	rpmTrendIsGrowth := true
-	if previousRPM > 0 {
-		rpmTrend = (currentRPM - previousRPM) / previousRPM * 100
-		rpmTrendIsGrowth = rpmTrend >= 0
-	} else if currentRPM > 0 {
-		rpmTrend = 100.0
-		rpmTrendIsGrowth = true
+	tokenTrend := 0.0
+	tokenTrendIsGrowth := true
+	if previousTokens > 0 {
+		tokenTrend = (float64(currentTokens-previousTokens) / float64(previousTokens)) * 100
+		tokenTrendIsGrowth = tokenTrend >= 0
+	} else if currentTokens > 0 {
+		tokenTrend = 100.0
+		tokenTrendIsGrowth = true
 	}
 
 	return models.StatCard{
-		Value:         currentRPM,
-		Trend:         rpmTrend,
-		TrendIsGrowth: rpmTrendIsGrowth,
+		Value:         currentTokensInBillions,
+		SubTitle:      fmt.Sprintf(i18n.Message(c, "dashboard.token_usage_million_subtitle"), float64(currentTokens)/1_000_000.0),
+		Trend:         tokenTrend,
+		TrendIsGrowth: tokenTrendIsGrowth,
 	}, nil
 }
 

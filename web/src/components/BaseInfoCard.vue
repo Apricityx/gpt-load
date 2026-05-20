@@ -45,7 +45,7 @@ const updateAnimatedValues = () => {
         key_count:
           (stats.value?.key_count?.value ?? 0) /
           ((stats.value?.key_count?.value ?? 1) + (stats.value?.key_count?.sub_value ?? 1)),
-        rpm: Math.min(100 + (stats.value?.rpm?.trend ?? 0), 100) / 100,
+        token_usage: Math.min(100 + (stats.value?.token_usage?.trend ?? 0), 100) / 100,
         request_count: Math.min(100 + (stats.value?.request_count?.trend ?? 0), 100) / 100,
         error_rate: (100 - (stats.value?.error_rate?.value ?? 0)) / 100,
       };
@@ -96,33 +96,34 @@ onMounted(() => {
           </n-card>
         </n-grid-item>
 
-        <!-- RPM (10分钟) -->
+        <!-- Token 用量 -->
         <n-grid-item span="1">
           <n-card :bordered="false" class="stat-card" style="animation-delay: 0.05s">
             <div class="stat-header">
-              <div class="stat-icon rpm-icon">⏱️</div>
+              <div class="stat-icon rpm-icon">🧮</div>
               <n-tag
-                v-if="stats?.rpm && stats.rpm.trend !== undefined"
-                :type="stats?.rpm.trend_is_growth ? 'success' : 'error'"
+                v-if="stats?.token_usage && stats.token_usage.trend !== undefined"
+                :type="stats?.token_usage.trend_is_growth ? 'success' : 'error'"
                 size="small"
                 class="stat-trend"
               >
-                {{ stats ? formatTrend(stats.rpm.trend) : "--" }}
+                {{ stats ? formatTrend(stats.token_usage.trend) : "--" }}
               </n-tag>
             </div>
 
             <div class="stat-content">
               <div class="stat-value">
-                {{ stats?.rpm?.value.toFixed(1) ?? 0 }}
+                {{ stats?.token_usage?.value.toFixed(3) ?? "0.000" }}B
               </div>
-              <div class="stat-title">{{ t("dashboard.rpm10Min") }}</div>
+              <div class="stat-title">{{ t("dashboard.tokenUsage24h") }}</div>
+              <div class="stat-subtitle">{{ stats?.token_usage?.sub_title ?? "0.00 M tokens" }}</div>
             </div>
 
             <div class="stat-bar">
               <div
                 class="stat-bar-fill rpm-bar"
                 :style="{
-                  width: `${(animatedValues.rpm ?? 0) * 100}%`,
+                  width: `${(animatedValues.token_usage ?? 0) * 100}%`,
                 }"
               />
             </div>
@@ -285,6 +286,12 @@ onMounted(() => {
   font-size: 0.95rem;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.stat-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .stat-bar {

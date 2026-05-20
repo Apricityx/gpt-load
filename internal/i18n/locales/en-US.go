@@ -93,6 +93,7 @@ var MessagesEnUS = map[string]string{
 	"dashboard.invalid_keys":                                     "Invalid Keys",
 	"dashboard.success_requests":                                 "Success",
 	"dashboard.failed_requests":                                  "Failed",
+	"dashboard.token_usage_million_subtitle":                     "%.2f M tokens",
 	"dashboard.auth_key_missing":                                 "AUTH_KEY is not set, system cannot function properly",
 	"dashboard.auth_key_required":                                "AUTH_KEY must be set to protect the admin interface",
 	"dashboard.encryption_key_missing":                           "ENCRYPTION_KEY is not set, sensitive data will be stored in plain text",
@@ -108,7 +109,7 @@ var MessagesEnUS = map[string]string{
 
 	// Database related
 	"database.cannot_get_groups":     "Cannot get groups list",
-	"database.rpm_stats_failed":      "Failed to get RPM statistics",
+	"database.token_stats_failed":    "Failed to get token statistics",
 	"database.current_stats_failed":  "Failed to get current period statistics",
 	"database.previous_stats_failed": "Failed to get previous period statistics",
 	"database.chart_data_failed":     "Failed to get chart data",

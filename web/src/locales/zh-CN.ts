@@ -85,7 +85,7 @@ export default {
     activeKeys: "活跃密钥",
     inactiveKeys: "非活跃密钥",
     blacklistedKeys: "黑名单密钥",
-    rpm10Min: "10分钟RPM",
+    tokenUsage24h: "24小时 Tokens",
     requests24h: "24小时请求",
     errorRate24h: "24小时错误率",
     requestStatistics: "请求统计",

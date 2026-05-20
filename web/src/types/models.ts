@@ -214,6 +214,7 @@ export interface StatCard {
   value: number;
   sub_value?: number;
   sub_value_tip?: string;
+  sub_title?: string;
   trend: number;
   trend_is_growth: boolean;
 }
@@ -229,7 +230,7 @@ export interface SecurityWarning {
 // 仪表盘基础统计响应
 export interface DashboardStatsResponse {
   key_count: StatCard;
-  rpm: StatCard;
+  token_usage: StatCard;
   request_count: StatCard;
   error_rate: StatCard;
   security_warnings: SecurityWarning[];

@@ -93,6 +93,7 @@ var MessagesZhCN = map[string]string{
 	"dashboard.invalid_keys":                                     "无效密钥数量",
 	"dashboard.success_requests":                                 "成功请求",
 	"dashboard.failed_requests":                                  "失败请求",
+	"dashboard.token_usage_million_subtitle":                     "%.2f M Tokens",
 	"dashboard.auth_key_missing":                                 "AUTH_KEY未设置，系统无法正常工作",
 	"dashboard.auth_key_required":                                "必须设置AUTH_KEY以保护管理界面",
 	"dashboard.encryption_key_missing":                           "未设置ENCRYPTION_KEY，敏感数据将明文存储",
@@ -108,7 +109,7 @@ var MessagesZhCN = map[string]string{
 
 	// Database related
 	"database.cannot_get_groups":     "无法获取分组列表",
-	"database.rpm_stats_failed":      "获取RPM统计失败",
+	"database.token_stats_failed":    "获取 Token 统计失败",
 	"database.current_stats_failed":  "获取当前期间统计失败",
 	"database.previous_stats_failed": "获取上一期间统计失败",
 	"database.chart_data_failed":     "获取图表数据失败",

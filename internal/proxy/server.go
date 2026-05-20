@@ -277,6 +277,7 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		ps.keyProvider.UpdateStatus(apiKey, group, true, "")
 	}
 	logrus.Debugf("Request for group %s succeeded on attempt %d with key %s", group.Name, retryCount+1, utils.MaskAPIKey(apiKey.KeyValue))
+	totalTokens := int64(0)
 
 	// Check if this is a model list request (needs special handling)
 	if shouldInterceptModelList(c.Request.URL.Path, c.Request.Method) {
@@ -290,13 +291,13 @@ func (ps *ProxyServer) executeRequestWithRetry(
 		c.Status(resp.StatusCode)
 
 		if isStream {
-			ps.handleStreamingResponse(c, resp)
+			totalTokens = ps.handleStreamingResponse(c, resp)
 		} else {
-			ps.handleNormalResponse(c, resp)
+			totalTokens = ps.handleNormalResponse(c, resp)
 		}
 	}
 
-	ps.logRequest(c, originalGroup, group, apiKey, startTime, resp.StatusCode, nil, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal)
+	ps.logRequest(c, originalGroup, group, apiKey, startTime, resp.StatusCode, nil, isStream, upstreamURL, channelHandler, bodyBytes, models.RequestTypeFinal, totalTokens)
 }
 
 func shouldFailoverOnStatusCode(statusCode int, group *models.Group) bool {
@@ -320,6 +321,7 @@ func (ps *ProxyServer) logRequest(
 	channelHandler channel.ChannelProxy,
 	bodyBytes []byte,
 	requestType string,
+	totalTokens ...int64,
 ) {
 	if ps.requestLogService == nil {
 		return
@@ -347,6 +349,9 @@ func (ps *ProxyServer) logRequest(
 		IsStream:     isStream,
 		UpstreamAddr: utils.TruncateString(upstreamAddr, 500),
 		RequestBody:  requestBodyToLog,
+	}
+	if len(totalTokens) > 0 {
+		logEntry.TotalTokens = totalTokens[0]
 	}
 
 	// Set parent group

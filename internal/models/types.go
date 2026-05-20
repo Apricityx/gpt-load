@@ -158,6 +158,7 @@ type RequestLog struct {
 	UpstreamAddr    string    `gorm:"type:varchar(500)" json:"upstream_addr"`
 	IsStream        bool      `gorm:"not null" json:"is_stream"`
 	RequestBody     string    `gorm:"type:text" json:"request_body"`
+	TotalTokens     int64     `gorm:"not null;default:0;index" json:"total_tokens"`
 }
 
 // StatCard 用于仪表盘的单个统计卡片数据
@@ -165,6 +166,7 @@ type StatCard struct {
 	Value         float64 `json:"value"`
 	SubValue      int64   `json:"sub_value,omitempty"`
 	SubValueTip   string  `json:"sub_value_tip,omitempty"`
+	SubTitle      string  `json:"sub_title,omitempty"`
 	Trend         float64 `json:"trend"`
 	TrendIsGrowth bool    `json:"trend_is_growth"`
 }
@@ -180,7 +182,7 @@ type SecurityWarning struct {
 // DashboardStatsResponse 用于仪表盘基础统计的API响应
 type DashboardStatsResponse struct {
 	KeyCount         StatCard          `json:"key_count"`
-	RPM              StatCard          `json:"rpm"`
+	TokenUsage       StatCard          `json:"token_usage"`
 	RequestCount     StatCard          `json:"request_count"`
 	ErrorRate        StatCard          `json:"error_rate"`
 	SecurityWarnings []SecurityWarning `json:"security_warnings"`
