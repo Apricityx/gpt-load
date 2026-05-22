@@ -471,6 +471,8 @@ export default {
     nonStream: "非ストリーム",
     statusCode: "ステータスコード",
     duration: "所要時間(ms)",
+    tokenUsage: "トークン使用量",
+    thinkingDepth: "思考深度",
     model: "モデル",
     sourceIP: "ソースIP",
     groupName: "グループ名",

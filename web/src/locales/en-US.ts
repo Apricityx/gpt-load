@@ -470,6 +470,8 @@ export default {
     nonStream: "Non-Stream",
     statusCode: "Status Code",
     duration: "Duration(ms)",
+    tokenUsage: "Token Usage",
+    thinkingDepth: "Thinking Depth",
     model: "Model",
     sourceIP: "Source IP",
     groupName: "Group Name",

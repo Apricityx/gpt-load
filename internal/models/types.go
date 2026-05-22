@@ -159,6 +159,7 @@ type RequestLog struct {
 	IsStream        bool      `gorm:"not null" json:"is_stream"`
 	RequestBody     string    `gorm:"type:text" json:"request_body"`
 	TotalTokens     int64     `gorm:"not null;default:0;index" json:"total_tokens"`
+	ThinkingDepth   string    `gorm:"type:varchar(255);index" json:"thinking_depth"`
 }
 
 // StatCard 用于仪表盘的单个统计卡片数据

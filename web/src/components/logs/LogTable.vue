@@ -172,6 +172,19 @@ const formatJsonString = (jsonStr: string) => {
   }
 };
 
+const formatTokenCount = (value?: number) => {
+  if (!value) {
+    return "-";
+  }
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(2)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+  return value.toString();
+};
+
 // 复制功能
 const copyContent = async (content: string, type: string) => {
   const success = await copy(content);
@@ -276,6 +289,20 @@ const allColumnConfigs: ColumnConfig[] = [
     title: t("logs.duration"),
     width: 110,
     defaultVisible: true,
+  },
+  {
+    key: "total_tokens",
+    title: t("logs.tokenUsage"),
+    width: 120,
+    defaultVisible: true,
+    render: (row: LogRow) => formatTokenCount(row.total_tokens),
+  },
+  {
+    key: "thinking_depth",
+    title: t("logs.thinkingDepth"),
+    width: 140,
+    defaultVisible: true,
+    render: (row: LogRow) => row.thinking_depth || "-",
   },
   {
     key: "parent_group_name",
@@ -748,6 +775,14 @@ const deselectAllColumns = () => {
               <div class="detail-item-compact">
                 <span class="detail-label-compact">{{ t("logs.duration") }}:</span>
                 <span class="detail-value-compact">{{ selectedLog.duration_ms }}ms</span>
+              </div>
+              <div class="detail-item-compact">
+                <span class="detail-label-compact">{{ t("logs.tokenUsage") }}:</span>
+                <span class="detail-value-compact">{{ formatTokenCount(selectedLog.total_tokens) }}</span>
+              </div>
+              <div class="detail-item-compact">
+                <span class="detail-label-compact">{{ t("logs.thinkingDepth") }}:</span>
+                <span class="detail-value-compact">{{ selectedLog.thinking_depth || "-" }}</span>
               </div>
               <div class="detail-item-compact">
                 <span class="detail-label-compact">{{ t("logs.parentGroup") }}:</span>

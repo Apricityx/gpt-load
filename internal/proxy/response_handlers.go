@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -125,5 +126,72 @@ func numericInt64(value any) int64 {
 		return parsed
 	default:
 		return 0
+	}
+}
+
+func extractThinkingDepth(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+
+	if value := stringValue(payload["reasoning_effort"]); value != "" {
+		return value
+	}
+	if value := stringValue(payload["thinking_depth"]); value != "" {
+		return value
+	}
+	if value := stringValue(payload["thinkingDepth"]); value != "" {
+		return value
+	}
+
+	if reasoning, ok := payload["reasoning"].(map[string]any); ok {
+		if value := stringValue(reasoning["effort"]); value != "" {
+			return value
+		}
+		if value := stringValue(reasoning["summary"]); value != "" {
+			return fmt.Sprintf("summary:%s", value)
+		}
+	}
+
+	if thinking, ok := payload["thinking"].(map[string]any); ok {
+		if value := stringValue(thinking["type"]); value != "" {
+			return value
+		}
+		if tokens := numericInt64(thinking["budget_tokens"]); tokens > 0 {
+			return fmt.Sprintf("budget:%d", tokens)
+		}
+	}
+
+	if thinkingConfig, ok := payload["thinkingConfig"].(map[string]any); ok {
+		if tokens := numericInt64(thinkingConfig["thinkingBudget"]); tokens > 0 {
+			return fmt.Sprintf("budget:%d", tokens)
+		}
+		if enabled, ok := thinkingConfig["includeThoughts"].(bool); ok {
+			return fmt.Sprintf("includeThoughts:%t", enabled)
+		}
+	}
+
+	return ""
+}
+
+func stringValue(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int:
+		return strconv.Itoa(v)
+	case bool:
+		return strconv.FormatBool(v)
+	default:
+		return ""
 	}
 }

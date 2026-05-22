@@ -167,6 +167,8 @@ export interface RequestLog {
   upstream_addr: string;
   is_stream: boolean;
   request_body?: string;
+  total_tokens: number;
+  thinking_depth?: string;
 }
 
 export interface Pagination {

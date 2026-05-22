@@ -349,6 +349,10 @@ func (ps *ProxyServer) logRequest(
 		IsStream:     isStream,
 		UpstreamAddr: utils.TruncateString(upstreamAddr, 500),
 		RequestBody:  requestBodyToLog,
+		ThinkingDepth: utils.TruncateString(
+			extractThinkingDepth(bodyBytes),
+			255,
+		),
 	}
 	if len(totalTokens) > 0 {
 		logEntry.TotalTokens = totalTokens[0]
