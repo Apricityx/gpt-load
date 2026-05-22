@@ -102,7 +102,7 @@ onMounted(() => {
             <div class="stat-header">
               <div class="stat-icon rpm-icon">🧮</div>
               <n-tag
-                v-if="stats?.token_usage && stats.token_usage.trend !== undefined"
+                v-if="stats?.token_usage && stats.token_usage.trend !== 0"
                 :type="stats?.token_usage.trend_is_growth ? 'success' : 'error'"
                 size="small"
                 class="stat-trend"
@@ -115,7 +115,7 @@ onMounted(() => {
               <div class="stat-value">
                 {{ stats?.token_usage?.value.toFixed(3) ?? "0.000" }}B
               </div>
-              <div class="stat-title">{{ t("dashboard.tokenUsage24h") }}</div>
+              <div class="stat-title">{{ t("dashboard.totalTokens") }}</div>
               <div class="stat-subtitle">{{ stats?.token_usage?.sub_title ?? "0.00 M tokens" }}</div>
             </div>
 
@@ -215,6 +215,7 @@ onMounted(() => {
   overflow: hidden;
   animation: slideInUp 0.2s ease-out both;
   transition: all 0.2s ease;
+  height: 100%;
 }
 
 .stat-card:hover {
@@ -272,6 +273,7 @@ onMounted(() => {
 
 .stat-content {
   margin-bottom: 16px;
+  min-height: 68px;
 }
 
 .stat-value {

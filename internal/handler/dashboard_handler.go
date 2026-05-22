@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"database/sql"
 	"fmt"
 	"gpt-load/internal/encryption"
 	app_errors "gpt-load/internal/errors"
@@ -22,7 +21,7 @@ func (s *Server) Stats(c *gin.Context) {
 	s.DB.Model(&models.APIKey{}).Where("status = ?", models.KeyStatusInvalid).Count(&invalidKeys)
 
 	now := time.Now()
-	tokenUsageStats, err := s.getTokenUsageStats(c, now)
+	tokenUsageStats, err := s.getTokenUsageStats(c)
 	if err != nil {
 		response.ErrorI18nFromAPIError(c, app_errors.ErrDatabase, "database.token_stats_failed")
 		return
@@ -198,44 +197,23 @@ func (s *Server) getHourlyStats(startTime, endTime time.Time) (hourlyStatResult,
 	return result, err
 }
 
-type tokenUsageStatResult struct {
-	CurrentTokens  sql.NullInt64
-	PreviousTokens sql.NullInt64
-}
-
-func (s *Server) getTokenUsageStats(c *gin.Context, now time.Time) (models.StatCard, error) {
-	twentyFourHoursAgo := now.Add(-24 * time.Hour)
-	fortyEightHoursAgo := now.Add(-48 * time.Hour)
-
-	var result tokenUsageStatResult
+func (s *Server) getTokenUsageStats(c *gin.Context) (models.StatCard, error) {
+	var totalTokens int64
 	err := s.DB.Model(&models.RequestLog{}).
-		Select("sum(case when timestamp >= ? then total_tokens else 0 end) as current_tokens, sum(case when timestamp >= ? and timestamp < ? then total_tokens else 0 end) as previous_tokens", twentyFourHoursAgo, fortyEightHoursAgo, twentyFourHoursAgo).
-		Where("timestamp >= ? AND request_type = ?", fortyEightHoursAgo, models.RequestTypeFinal).
-		Scan(&result).Error
+		Select("COALESCE(SUM(total_tokens), 0)").
+		Where("request_type = ?", models.RequestTypeFinal).
+		Scan(&totalTokens).Error
 
 	if err != nil {
 		return models.StatCard{}, err
 	}
 
-	currentTokens := result.CurrentTokens.Int64
-	previousTokens := result.PreviousTokens.Int64
-	currentTokensInBillions := float64(currentTokens) / 1_000_000_000.0
-
-	tokenTrend := 0.0
-	tokenTrendIsGrowth := true
-	if previousTokens > 0 {
-		tokenTrend = (float64(currentTokens-previousTokens) / float64(previousTokens)) * 100
-		tokenTrendIsGrowth = tokenTrend >= 0
-	} else if currentTokens > 0 {
-		tokenTrend = 100.0
-		tokenTrendIsGrowth = true
-	}
-
+	totalTokensInBillions := float64(totalTokens) / 1_000_000_000.0
 	return models.StatCard{
-		Value:         currentTokensInBillions,
-		SubTitle:      fmt.Sprintf(i18n.Message(c, "dashboard.token_usage_million_subtitle"), float64(currentTokens)/1_000_000.0),
-		Trend:         tokenTrend,
-		TrendIsGrowth: tokenTrendIsGrowth,
+		Value:         totalTokensInBillions,
+		SubTitle:      fmt.Sprintf(i18n.Message(c, "dashboard.token_usage_million_subtitle"), float64(totalTokens)/1_000_000.0),
+		Trend:         0,
+		TrendIsGrowth: true,
 	}, nil
 }
 
